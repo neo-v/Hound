@@ -1,5 +1,7 @@
 # Hound
 
+[![Join the chat at https://gitter.im/etsy/Hound](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/etsy/Hound?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 Hound is an extremely fast source code search engine. The core is based on this article (and code) from Russ Cox:
 [Regular Expression Matching with a Trigram Index](http://swtch.com/~rsc/regexp/regexp4.html). Hound itself is a static
 [React](http://facebook.github.io/react/) frontend that talks to a [Go](http://golang.org/) backend. The backend keeps an up-to-date index for each repository and answers searches through a minimal API. Here it is in action:
@@ -7,20 +9,39 @@ Hound is an extremely fast source code search engine. The core is based on this 
 ![Hound Screen Capture](screen_capture.gif)
 
 ## Quick Start Guide
+* docker 1.4+
 
-1. Clone the repo: `git clone git@github.com:etsy/Hound.git`
-2. Edit [config-example.json](config-example.json) to add the repos you want: `cd Hound && vim config-example.json`
-3. Rename the (now edited) config file: `mv config-example.json config.json`
-4. Set your GOPATH: ``export GOPATH=`pwd` ``
-5. Run the server: `go run src/hound/cmds/houndd/main.go`
-6. See Hound in action in your browser at [http://localhost:6080/](http://localhost:6080/)
+1. Create a [config.json](config-example.json) in a directory with your list of repositories.
 
-Have [Rake](http://docs.seattlerb.org/rake/) installed? Steps 4 and 5 change to:
+2. Run 
+    ```
+    docker run -it --rm -p 6080:6080 --name houndd -v $(pwd):/hound etsy/hound
+    ```
 
-* Run rake to create binaries: `rake`
-* Run the binary: `./bin/houndd`
+You should be able to navigate to [http://localhost:6080/](http://localhost:6080/) as usual.
 
-This is the preferred approach, since the binaries are generally easier to work with, and rake will build both the server and the CLI binaries at the same time.
+
+## Build from source
+
+1. Use the Go tools to install Hound. The binaries `houndd` (server) and `hound` (cli) will be installed in your $GOPATH.
+
+    ```
+    go get github.com/etsy/hound/cmds/...
+    ```
+
+2. Create a [config.json](config-example.json) in a directory with your list of repositories.
+
+3. Run the Hound server with `houndd` and you should see output similar to:
+````
+2015/03/13 09:07:42 Searcher started for statsd
+2015/03/13 09:07:42 Searcher started for Hound
+2015/03/13 09:07:42 All indexes built!
+2015/03/13 09:07:42 running server at http://localhost:6080...
+```
+
+## Running in Production
+
+There are no special flags to run Hound in production. You can use the `--addr=:6880` flag to control the port to which the server binds. Currently, Hound does not supports SSL/TLS as most users simply run Hound behind either Apache or nginx. Adding TLS support is pretty straight forward though if anyone wants to add it.
 
 ## Why Another Code Search Tool?
 
@@ -28,52 +49,83 @@ We've used many similar tools in the past, and most of them are either too slow,
 Which brings us to...
 
 ## Requirements
-
-### Hard Requirements
 * Go 1.3+
-
-### Optional, Recommended Software
-* Rake (for building the binaries, not strictly required)
-* nodejs (for the command line react-tools)
 
 Yup, that's it. You can proxy requests to the Go service through Apache/nginx/etc., but that's not required.
 
+
 ## Support
 
-Currently Hound is only tested on MacOS and CentOS, but it should work on any *nix system. There is no plan to support Windows, and we've heard that it fails to compile on Windows, but we would be happy to accept a PR that fixes this!
+Currently Hound is only tested on MacOS and CentOS, but it should work on any *nix system. Hound on Windows is not supported but we've heard it compiles and runs just fine.
 
-Similarly, right now Hound only supports git repositories, although adding SVN and Mercurial wouldn't take too much work. Pull requests for this are welcome.
+Hound supports the following version control systems: 
+
+* Git - This is the default
+* Mercurial - use `"vcs" : "hg"` in the config
+* SVN - use `"vcs" : "svn"` in the config
+* Bazaar - use `"vcs" : "bzr"` in the config
+
+See [config-example.json](config-example.json) for examples of how to use each VCS.
+
+## Private Repositories
+
+There are a couple of ways to get Hound to index private repositories:
+
+* Use the `file://` protocol. This allows you to index any local folder, so you can clone the repository locally 
+and then reference the files directly. The downside here is that the polling to keep the repo up to date will
+not work.
+* Use SSH style URLs in the config: `"url" : "git@github.com:foo/bar.git"`. As long as you have your 
+[SSH keys](https://help.github.com/articles/generating-ssh-keys/) set up on the box where Hound is running this will work. There is currently an [issue](https://github.com/etsy/Hound/issues/19) with URLs in this case that we hope to fix soon.
+
+## Keeping Repos Updated
+
+By default Hound polls the URL in the config for updates every 30 seconds. You can override this value by setting the `ms-between-poll` key on a per repo basis in the config. If you are indexing a large number of repositories, you may also be interested in tweaking the `max-concurrent-indexers` property. You can see how these work in the [example config](config-example.json). 
+
+## Editor Integration
+
+Currently the following editors have plugins that support Hound:
+
+* [Sublime Text](https://github.com/bgreenlee/SublimeHound)
+* [Vim](https://github.com/urthbound/hound.vim)
+* [Emacs](https://github.com/ryoung786/hound.el)
 
 ## Hacking on Hound
 
-### Building
+### Editing & Building
+
+#### Requirements:
+ * make
+ * Node.js ([Installation Instructions](https://github.com/joyent/node/wiki/Installing-Node.js-via-package-manager))
+ * React-tools (install w/ `npm -g install react-tools`)
+
+Hound includes tools to make building locally easy. It is recommended that you use these tools if you are working on Hound. To get setup and build, just run the following commands:
 
 ```
-rake
+git clone https://github.com/etsy/hound.git hound/src/github.com/etsy/hound
+cd hound
+src/github.com/etsy/hound/tools/setup
+make
 ```
 
-This will build `./bin/houndd` which is the server binary and `./bin/hound` which is the command line client.
+### Testing
 
-### Running in development
-
-```
-./bin/houndd
-```
-
-This will start up the combined server and indexer. The first time you start the server, it will take a bit of time to initialize your `data` directory with the repository data.
-You can access the web frontend at http://localhost:6080/
-
-### Running in production
+There are an increasing number of tests in each of the packages in Hound. Please make sure these pass before uploading your Pull Request. You can run the tests with the following command.
 
 ```
-./bin/houndd --prod --addr=address:port
+make test
 ```
 
-The will start up the combined server/indexer and build all static assets in production mode. The default addr is ":6080", and thus the `--addr` flag can be used to have the server listen on a different port.
+### Working on the web UI
+
+Hound includes a web UI that is composed of several files (html, css, javascript, etc.). To make sure hound works seamlessly with the standard Go tools, these resources are all bundled inside of the `houndd` binary. Note that changes to the UI will result in local changes to the `ui/bindata.go` file. You must include these changes in your Pull Request.
+
+To make development easier, there is a flag that will read the files from the file system (allowing the much-loved edit/refresh cycle).
+
+```
+bin/houndd --dev
+```
 
 ## Get in Touch
-
-IRC: #codeascraft on freenode
 
 Created at [Etsy](https://www.etsy.com) by:
 
